@@ -4,3 +4,6 @@ env
 
 # apple
 .DS_Store
+
+# vscode
+.vscode
