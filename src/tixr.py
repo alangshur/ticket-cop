@@ -68,7 +68,7 @@ warning_stop_threshold = 5
 warning_increment = 1
 no_warning_decrement = 0.25
 warning_stack = 0
-max_average_group_time = 10
+max_avg_group_time = 10
 sleep_time = 5
 
 ua = UserAgent()
@@ -105,15 +105,15 @@ try:
                     slack
                 )
 
-        if warning_stack > max_average_group_time:
-            slack.send_message('tixr-scans', 'Error: Bot reached warning threshold.'.format(round(avg_group_time, 3)))
+        if warning_stack > warning_stop_threshold:
+            slack.send_message('tixr-scans', 'Error: Bot reached warning threshold.')
             break
         else:
             warning_stack = max(0, warning_stack - no_warning_decrement)
 
         stop_time = time.time()
         avg_group_time = (stop_time - start_time) / len(past_events_data)
-        if avg_group_time > 10:
+        if avg_group_time > max_avg_group_time:
             slack.send_message('tixr-scans', 'Warning: Bot averaged {} seconds per group.'.format(round(avg_group_time, 3)))
         
         time.sleep(sleep_time)
