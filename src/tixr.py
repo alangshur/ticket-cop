@@ -2,9 +2,29 @@ from fake_useragent import UserAgent
 from comms.slack import SlackBot
 from dateutil import parser
 from dateutil.tz import gettz
+from datetime import datetime
 import requests
 import time
 import json
+
+
+def humanbytes(B):
+    B = float(B)
+    KB = float(1024)
+    MB = float(KB ** 2)
+    GB = float(KB ** 3)
+    TB = float(KB ** 4)
+
+    if B < KB:
+        return '{0} {1}'.format(B,'Bytes' if 0 == B > 1 else 'Byte')
+    elif KB <= B < MB:
+        return '{0:.2f} KB'.format(B/KB)
+    elif MB <= B < GB:
+        return '{0:.2f} MB'.format(B/MB)
+    elif GB <= B < TB:
+        return '{0:.2f} GB'.format(B/GB)
+    elif TB <= B:
+        return '{0:.2f} TB'.format(B/TB)
 
 
 def load_snapshot(events_content, past_events_data, slack):
@@ -58,7 +78,7 @@ def load_snapshot(events_content, past_events_data, slack):
                 event = events_data[event_id]
                 past_event = past_events_data[event_id]
                 if len(event['sales_data']) != len(past_event['sales_data']):
-                    slack.send_message('tixr-scans', 'New sales data posted for {} at {} on {}.'.format(event['name'], event['venue']['name'], event['date']))
+                    slack.send_message('tixr-scans', '*ALERT*: New sales data posted for {} at {} on {}.'.format(event['name'], event['venue']['name'], event['date']))
                     slack.send_message('tixr-scans-raw', '```\n{}```'.format(json.dumps(event, indent=2)))
 
     return events_data
@@ -70,6 +90,14 @@ no_warning_decrement = 0.25
 warning_stack = 0
 max_avg_group_time = 10
 sleep_time = 5
+update_interval = 1000
+it = 0
+
+total_processed_data = 0
+total_warnings = 0
+daily_processed_data = 0
+daily_warnings = 0
+current_day = datetime.now(gettz('America/New_York')).strftime('%m-%d-%Y')
 
 ua = UserAgent()
 slack = SlackBot()
@@ -79,10 +107,28 @@ past_events_data = {
 }
 
 print('Launching Tixr scanning bot.')
-slack.send_message('tixr-scans', 'Launching Tixr scanning bot.')
+slack.send_message('tixr-scans', '*Info*: Launching Tixr scanning bot.')
 
 try:
     while True:
+        it += 1
+        cur_time = datetime.now(gettz('America/New_York'))
+        print('\rIteration: {} | Time: {}\t\t\t'.format(it, cur_time.strftime('%m-%d-%Y %H:%M:%S EDT')), end='')
+
+        if cur_time.strftime('%m-%d-%Y') != current_day:
+            current_day = cur_time.strftime('%m-%d-%Y')
+            daily_processed_data = 0
+            daily_warnings = 0
+        
+        if it % update_interval == 0:
+            update_msg = \
+                '*Update*:\n' + \
+                'Time: {}\n'.format(cur_time.strftime('%m-%d-%Y %H:%M:%S EDT')) + \
+                'Total processed data: {}\n'.format(humanbytes(total_processed_data)) + \
+                'Total warnings: {}\n'.format(total_warnings) + \
+                'Daily processed data: {}\n'.format(humanbytes(daily_processed_data)) + \
+                'Daily warnings: {}'.format(daily_warnings)
+
         start_time = time.time()
         for group_id in past_events_data:
         
@@ -95,9 +141,15 @@ try:
 
             status = response.status_code
             if response.status_code != 200:
-                slack.send_message('tixr-scans', 'Warning: Bot received {} status for group {}.'.format(status, group_id))
+                slack.send_message('tixr-scans', '*Warning*: Bot received {} status for group {}.'.format(status, group_id))
                 warning_stack += warning_increment
+                total_warnings += 1
+                daily_warnings += 1
             else:
+                response_size = len(response.content)
+                total_processed_data += response_size
+                daily_processed_data += response_size
+
                 events_content = response.json()
                 past_events_data[group_id] = load_snapshot(
                     events_content, 
@@ -106,7 +158,7 @@ try:
                 )
 
         if warning_stack > warning_stop_threshold:
-            slack.send_message('tixr-scans', 'Error: Bot reached warning threshold.')
+            slack.send_message('tixr-scans', '*Error*: Bot reached warning threshold.')
             break
         else:
             warning_stack = max(0, warning_stack - no_warning_decrement)
@@ -114,15 +166,16 @@ try:
         stop_time = time.time()
         avg_group_time = (stop_time - start_time) / len(past_events_data)
         if avg_group_time > max_avg_group_time:
-            slack.send_message('tixr-scans', 'Warning: Bot averaged {} seconds per group.'.format(round(avg_group_time, 3)))
-        
+            slack.send_message('tixr-scans', '*Warning*: Bot averaged {} seconds per group.'.format(round(avg_group_time, 3)))
+            total_warnings += 1
+
         time.sleep(sleep_time)
 
 except KeyboardInterrupt: 
     pass
 except Exception as e: 
-    print('Internal error: ' + str(e))
-    slack.send_message('tixr-scans', 'Error: Internal server error in Tixr scanning bot.')
+    print('\nInternal error: ' + str(e))
+    slack.send_message('tixr-scans', '*Error*: Internal server error in Tixr scanning bot.')
 
-print('Shutting down Tixr scanning bot.')
-slack.send_message('tixr-scans', 'Shutting down Tixr scanning bot.')
+print('\nShutting down Tixr scanning bot.')
+slack.send_message('tixr-scans', '*Info*: Shutting down Tixr scanning bot.')

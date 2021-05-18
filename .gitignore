@@ -1,5 +1,7 @@
 
-# venv
+# python
+__pycache__
+venv
 env
 
 # apple
