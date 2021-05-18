@@ -129,6 +129,7 @@ try:
                 'Total warnings: {}\n'.format(total_warnings) + \
                 'Daily processed data: {}\n'.format(humanbytes(daily_processed_data)) + \
                 'Daily warnings: {}'.format(daily_warnings)
+            slack.send_message('tixr-scans', update_msg)
 
         start_time = time.time()
         for group_id in past_events_data:
