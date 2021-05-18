@@ -101,7 +101,7 @@ daily_warnings = 0
 current_day = datetime.now(gettz('America/New_York')).strftime('%m-%d-%Y')
 
 ua = UserAgent()
-slack = SlackBot(test_mode=True)
+slack = SlackBot(test_mode=False)
 past_events_data = {
     '160': None,   # LIV nightclub
     '161': None   # Story nightclub
