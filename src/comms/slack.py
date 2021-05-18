@@ -6,7 +6,8 @@ import os
 
 class SlackBot:
 
-    def __init__(self):
+    def __init__(self, test_mode=False):
+        self.test_mode = test_mode
         config = configparser.ConfigParser()
         config.read('../config/slack.ini')
         oauth_token = config['credentials']['oauth_token']
@@ -14,9 +15,10 @@ class SlackBot:
         
     def send_message(self, channel, text):
         try:
-            self.client.chat_postMessage(
-                channel=channel, 
-                text=text
-            )
+            if not self.test_mode:
+                self.client.chat_postMessage(
+                    channel=channel, 
+                    text=text
+                )
         except Exception as e:
             print(e)

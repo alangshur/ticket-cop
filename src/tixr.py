@@ -3,6 +3,7 @@ from comms.slack import SlackBot
 from dateutil import parser
 from dateutil.tz import gettz
 from datetime import datetime
+import traceback
 import requests
 import time
 import json
@@ -100,7 +101,7 @@ daily_warnings = 0
 current_day = datetime.now(gettz('America/New_York')).strftime('%m-%d-%Y')
 
 ua = UserAgent()
-slack = SlackBot()
+slack = SlackBot(test_mode=True)
 past_events_data = {
     '160': None,   # LIV nightclub
     '161': None   # Story nightclub
@@ -113,7 +114,7 @@ try:
     while True:
         it += 1
         cur_time = datetime.now(gettz('America/New_York'))
-        print('\rIteration: {} | Time: {}\t\t\t'.format(it, cur_time.strftime('%m-%d-%Y %H:%M:%S EDT')), end='')
+        print('\rIteration: {} | Time: {}'.format(it, cur_time.strftime('%m-%d-%Y %H:%M:%S EDT')), end='')
 
         if cur_time.strftime('%m-%d-%Y') != current_day:
             current_day = cur_time.strftime('%m-%d-%Y')
@@ -150,12 +151,18 @@ try:
                 total_processed_data += response_size
                 daily_processed_data += response_size
 
-                events_content = response.json()
-                past_events_data[group_id] = load_snapshot(
-                    events_content, 
-                    past_events_data[group_id], 
-                    slack
-                )
+                try: 
+                    events_content = response.json()
+                    past_events_data[group_id] = load_snapshot(
+                        events_content,
+                        past_events_data[group_id], 
+                        slack
+                    )
+                except:
+                    slack.send_message('tixr-scans', '*Warning*: Bot could not parse response for group {}.'.format(group_id))
+                    warning_stack += warning_increment
+                    total_warnings += 1
+                    daily_warnings += 1
 
         if warning_stack > warning_stop_threshold:
             slack.send_message('tixr-scans', '*Error*: Bot reached warning threshold.')
@@ -168,13 +175,14 @@ try:
         if avg_group_time > max_avg_group_time:
             slack.send_message('tixr-scans', '*Warning*: Bot averaged {} seconds per group.'.format(round(avg_group_time, 3)))
             total_warnings += 1
+            daily_warnings += 1
 
         time.sleep(sleep_time)
 
 except KeyboardInterrupt: 
     pass
 except Exception as e: 
-    print('\nInternal error: ' + str(e))
+    traceback.print_exc()
     slack.send_message('tixr-scans', '*Error*: Internal server error in Tixr scanning bot.')
 
 print('\nShutting down Tixr scanning bot.')
