@@ -159,7 +159,6 @@ try:
                         slack
                     )
                 except:
-                    slack.send_message('tixr-scans', '*Warning*: Bot could not parse response for group {}.'.format(group_id))
                     warning_stack += warning_increment
                     total_warnings += 1
                     daily_warnings += 1
