@@ -6,94 +6,109 @@ import requests
 
 ### INPUTS
 EVENT_CLASSIFICATION = 'music'
-COUNTRY_CODE = 'US'
-
-# get timezone dt
-tz = gettz('America/New_York')
-dt_now = datetime.utcnow().astimezone(tz)
+EVENT_COUNTRY_CODE = 'US'
 
 # get credentials
 config = configparser.ConfigParser()
 config.read('../config/ticketmaster.ini')
-consumer_key = config['credentials']['consumer_key']
-consumer_secret = config['credentials']['consumer_secret']
+CONSUMER_KEY = config['credentials']['consumer_key']
+BASE_URL = config['urls']['base_events_url']
 
-# build base query
-base_query = 'https://app.ticketmaster.com/discovery/v2/events.json?countryCode=US&classificationName=music&apikey={}'.format(consumer_key)
+# get timezone dt
+tz = gettz('America/New_York')
+dt_now_utc = datetime.utcnow()
+dt_now = dt_now_utc.astimezone(tz)
 
+events_data = []
+page_num = 0
 
-## TODO:
-# - build adaptive event query
-# - only allows us to pull 1000 items per query and 200 items per request 
-# - make a shifting date window of <1000 items per window where we do 5 requests per window of 200 items each
+while True:
 
+    query_params = {
+        'apikey': CONSUMER_KEY,
 
+        'size': 200,
+        'page': page_num,
 
+        'classificationName': EVENT_CLASSIFICATION,
+        'countryCode': EVENT_COUNTRY_CODE,
 
+        'sort': 'date,asc',
+        'startDateTime': dt_now_utc.strftime('%Y-%m-%dT%H:%M:%SZ'),
+        'onsaleOnAfterStartDate': dt_now_utc.strftime('%Y-%m-%d'),
 
+        'includeTBA': 'no',
+        'includeTBD': 'no',
+        'includeTest': 'no'
+    }
 
-respone = requests.get(
-    url='https://app.ticketmaster.com/discovery/v2/events.json?countryCode=US&classificationName=sport&apikey={}'.format(consumer_key)
-)
+    response = requests.get(
+        url=BASE_URL,
+        params=query_params
+    )
 
-data = respone.json()
-events_data = data['_embedded']['events']
+    contents = response.json()
+    total_pages = contents['page']['totalPages']
+    events_data.extend(contents['_embedded']['events'])
+    if total_pages == page_num + 1: break
+    else: page_num += 1
+
 public_sale_data = []
 presale_data = []
 
-# for event in events_data:
-#     try:
-#         event_name = event['name']
-#         event_dt = parser.parse(event['dates']['start']['dateTime']).astimezone(tz)
+for event in events_data:
+    try:
+        event_name = event['name']
+        event_dt = parser.parse(event['dates']['start']['dateTime']).astimezone(tz)
 
-#         if 'public' in event['sales']:
-#             sale = event['sales']['public']
-#             sale_name = 'public'
-#             sale_start_dt = parser.parse(sale['startDateTime']).astimezone(tz)
-#             sale_end_dt = parser.parse(sale['endDateTime']).astimezone(tz)
-#             sale_started = bool(dt_now >= sale_start_dt)
-#             sale_ended = bool(dt_now >= sale_end_dt)
-#             sale_in_progress = bool(sale_started and not sale_ended)
-#             if not sale_started: sale_status = 'not_started'
-#             elif sale_in_progress: sale_status = 'in_progress'
-#             elif sale_ended: sale_status = 'over'
-#             public_sale_data.append({
-#                 'event_name': event_name,
-#                 'event_dt': event_dt,
-#                 'sale_start_dt': sale_start_dt,
-#                 'sale_end_dt': sale_end_dt,
-#                 'sale_status': sale_status
-#             })
+        if 'public' in event['sales']:
+            sale = event['sales']['public']
+            sale_name = 'public'
+            sale_start_dt = parser.parse(sale['startDateTime']).astimezone(tz)
+            sale_end_dt = parser.parse(sale['endDateTime']).astimezone(tz)
+            sale_started = bool(dt_now >= sale_start_dt)
+            sale_ended = bool(dt_now >= sale_end_dt)
+            sale_in_progress = bool(sale_started and not sale_ended)
+            if not sale_started: sale_status = 'not_started'
+            elif sale_in_progress: sale_status = 'in_progress'
+            elif sale_ended: sale_status = 'over'
+            public_sale_data.append({
+                'event_name': event_name,
+                'event_dt': event_dt,
+                'sale_start_dt': sale_start_dt,
+                'sale_end_dt': sale_end_dt,
+                'sale_status': sale_status
+            })
 
-#         if 'presales' in event['sales']:
-#             for presale in event['sales']['presales']:
-#                 sale_name = presale['name']
-#                 sale_start_dt = parser.parse(presale['startDateTime']).astimezone(tz)
-#                 sale_end_dt = parser.parse(presale['endDateTime']).astimezone(tz)
-#                 sale_started = bool(dt_now >= sale_start_dt)
-#                 sale_ended = bool(dt_now >= sale_end_dt)
-#                 sale_in_progress = bool(sale_started and not sale_ended)
-#                 if not sale_started: sale_status = 'not_started'
-#                 elif sale_in_progress: sale_status = 'in_progress'
-#                 elif sale_ended: sale_status = 'over'
-#                 presale_data.append({
-#                     'event_name': event_name,
-#                     'event_dt': event_dt,
-#                     'sale_name': sale_name,
-#                     'sale_start_dt': sale_start_dt,
-#                     'sale_end_dt': sale_end_dt,
-#                     'sale_status': sale_status
-#                 })
+        if 'presales' in event['sales']:
+            for presale in event['sales']['presales']:
+                sale_name = presale['name']
+                sale_start_dt = parser.parse(presale['startDateTime']).astimezone(tz)
+                sale_end_dt = parser.parse(presale['endDateTime']).astimezone(tz)
+                sale_started = bool(dt_now >= sale_start_dt)
+                sale_ended = bool(dt_now >= sale_end_dt)
+                sale_in_progress = bool(sale_started and not sale_ended)
+                if not sale_started: sale_status = 'not_started'
+                elif sale_in_progress: sale_status = 'in_progress'
+                elif sale_ended: sale_status = 'over'
+                presale_data.append({
+                    'event_name': event_name,
+                    'event_dt': event_dt,
+                    'sale_name': sale_name,
+                    'sale_start_dt': sale_start_dt,
+                    'sale_end_dt': sale_end_dt,
+                    'sale_status': sale_status
+                })
 
-#                 # print presale less than a week away
-#                 if sale_status == 'not_started' and (sale_start_dt - dt_now).days < 14:
-#                     print('******* UPCOMING PRESALE *******')
-#                     print('Event: {}'.format(event_name))
-#                     print('Event date: {}'.format(event_dt.strftime('%Y-%m-%d')))
-#                     print('Sale name: {}'.format(sale_name))
-#                     print('Opens in: {} days'.format((sale_start_dt - dt_now).days))
-#                     print('********************************')
-#                     print('\n\n\n')
+                # print presale less than a week away
+                if sale_status == 'not_started' and (sale_start_dt - dt_now).days < 14:
+                    print('******* UPCOMING PRESALE *******')
+                    print('Event: {}'.format(event_name))
+                    print('Event date: {}'.format(event_dt.strftime('%Y-%m-%d')))
+                    print('Sale name: {}'.format(sale_name))
+                    print('Opens in: {} days'.format((sale_start_dt - dt_now).days))
+                    print('********************************')
+                    print('\n\n\n')
 
-#     except:
-#         pass
+    except:
+        pass
