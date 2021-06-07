@@ -1,6 +1,8 @@
 from dateutil import parser
 from dateutil.tz import gettz
 from datetime import datetime
+from tabulate import tabulate
+import pandas as pd
 import configparser
 import requests
 
@@ -60,6 +62,7 @@ for event in events_data:
     try:
         event_name = event['name']
         event_dt = parser.parse(event['dates']['start']['dateTime']).astimezone(tz)
+        event_url = event['url']
 
         if 'public' in event['sales']:
             sale = event['sales']['public']
@@ -74,7 +77,9 @@ for event in events_data:
             elif sale_ended: sale_status = 'over'
             public_sale_data.append({
                 'event_name': event_name,
+                'event_url': event_url,
                 'event_dt': event_dt,
+                'sale_starts_in': pd.Timedelta(sale_start_dt - dt_now),
                 'sale_start_dt': sale_start_dt,
                 'sale_end_dt': sale_end_dt,
                 'sale_status': sale_status
@@ -93,22 +98,26 @@ for event in events_data:
                 elif sale_ended: sale_status = 'over'
                 presale_data.append({
                     'event_name': event_name,
+                    'event_url': event_url,
                     'event_dt': event_dt,
                     'sale_name': sale_name,
+                    'sale_starts_in': pd.Timedelta(sale_start_dt - dt_now),
                     'sale_start_dt': sale_start_dt,
                     'sale_end_dt': sale_end_dt,
                     'sale_status': sale_status
                 })
 
-                # print presale less than a week away
-                if sale_status == 'not_started' and (sale_start_dt - dt_now).days < 14:
-                    print('******* UPCOMING PRESALE *******')
-                    print('Event: {}'.format(event_name))
-                    print('Event date: {}'.format(event_dt.strftime('%Y-%m-%d')))
-                    print('Sale name: {}'.format(sale_name))
-                    print('Opens in: {} days'.format((sale_start_dt - dt_now).days))
-                    print('********************************')
-                    print('\n\n\n')
-
     except:
         pass
+
+
+public_sale_df = pd.DataFrame.from_records(public_sale_data)
+public_sale_df = public_sale_df[public_sale_df.sale_status == 'not_started']
+public_sale_df = public_sale_df[public_sale_df.sale_starts_in.dt.days < 1]
+public_sale_df = public_sale_df.sort_values(by='sale_starts_in', ascending=True)
+
+public_sale_df.index = public_sale_df.event_name
+public_sale_df = public_sale_df[['sale_starts_in', 'event_url']]
+
+output_df = tabulate(public_sale_df, headers='keys', tablefmt='psql')
+print(output_df, flush=True)
